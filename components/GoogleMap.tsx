@@ -1,327 +1,409 @@
-"use client";
-import React, { useState, useRef, useEffect, useCallback } from "react";
-import { boundsMap } from "../utils/mapUtils";
-import { useDirections, RouteOptions } from "../hooks/useDirections";
-import { MenuOverlay } from "./MenuOverlay";
-import { DetailedSettings, DetailedSettingsState } from "./DetailedSettings";
-import { MapContainer } from "./MapContainer";
-import { roundDistance } from "../lib/fareUtils";
-import { supabase } from "../lib/supabaseClient";
-import { regionMap, vehicleMap } from "../utils/constants";
+/// <reference types="google.maps" />
 
-const orange = "#ffa500";
-const buttonWide = {
-  height: 50,
-  flex: 1,
-  fontSize: "1.06em",
-  fontWeight: "bold",
-  borderRadius: 8,
-  minWidth: 0,
-  border: "2.5px solid #aaa",
-  margin: 0,
-  outline: "none",
-  transition: "background 0.2s, color 0.2s, border 0.2s"
+"use client";
+
+import React, { useRef, useEffect, useState } from "react";
+import { supabase } from "../lib/supabaseClient";
+import { roundDistance } from "../lib/fareUtils";
+
+declare global {
+  interface Window {
+    initMap: () => void;
+    google: typeof google;
+  }
+}
+
+// 地域名→region_code マッピング
+const regionMap: Record<string, number> = {
+  北海道: 1,
+  東北: 2,
+  関東: 3,
+  北陸信越: 4,
+  中部: 5,
+  近畿: 6,
+  中国: 7,
+  四国: 8,
+  九州: 9,
+  沖縄: 10,
 };
 
-const vehicleList = [
-  { value: "small", label: "小型車(2tクラス)" },
-  { value: "medium", label: "中型車(4tクラス)" },
-  { value: "large", label: "大型車(10tクラス)" },
-  { value: "trailer", label: "トレーラ(20tクラス)" },
-];
-const regionList = [
-  "北海道", "東北", "関東", "北陸信越", "中部", "近畿", "中国", "四国", "九州", "沖縄"
-];
+// 車種キー→vehicle_code マッピング
+const vehicleMap: Record<"small" | "medium" | "large" | "trailer", number> = {
+  small: 1,
+  medium: 2,
+  large: 3,
+  trailer: 4,
+};
+
+// regionごとの表示領域(bounds)
+const boundsMap: Record<string, google.maps.LatLngBoundsLiteral> = {
+  北海道: { north: 45.6, south: 41.2, west: 139.0, east: 146.0 },
+  東北: { north: 41.2, south: 37.5, west: 139.5, east: 142.5 },
+  関東: { north: 37.0, south: 35.0, west: 138.5, east: 140.5 },
+  北陸信越: { north: 37.0, south: 35.5, west: 136.0, east: 139.0 },
+  中部: { north: 37.5, south: 34.5, west: 136.5, east: 138.5 },
+  近畿: { north: 36.0, south: 33.5, west: 134.5, east: 136.5 },
+  中国: { north: 35.0, south: 32.5, west: 132.0, east: 134.0 },
+  四国: { north: 34.5, south: 32.0, west: 132.0, east: 134.0 },
+  九州: { north: 33.0, south: 30.5, west: 129.5, east: 131.5 },
+  沖縄: { north: 26.8, south: 24.0, west: 122.9, east: 131.3 },
+};
 
 export default function GoogleMap() {
-  // デフォルト設定
   const [vehicle, setVehicle] = useState<"small" | "medium" | "large" | "trailer">("large");
   const [region, setRegion] = useState<string>("関東");
-  const [useHighway, setUseHighway] = useState(true);
-  const [showDetails, setShowDetails] = useState(false); // 適用しない
-  const [distanceMode, setDistanceMode] = useState<"map"|"address"|"manual">("map");
-  const [addressTab, setAddressTab] = useState<"normal"|"ferry">("normal");
-
-  // 地図関連
-  const mapContainerRef = useRef<HTMLDivElement>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [clickedLatLng, setClickedLatLng] = useState<google.maps.LatLngLiteral | null>(null);
-  const originMarkerRef = useRef<google.maps.Marker | null>(null);
-  const destinationMarkerRef = useRef<google.maps.Marker | null>(null);
-
-  // 住所モード入力
-  const [origin, setOrigin] = useState("");
-  const [destination, setDestination] = useState("");
-  const [waypoints, setWaypoints] = useState<string[]>([""]);
-  const [ferryPorts, setFerryPorts] = useState<{from:string,to:string}>({from:"",to:""});
-
-  // 手入力距離
-  const [manualDistance, setManualDistance] = useState("");
-  const [manualConfirmed, setManualConfirmed] = useState(false);
-
-  // 詳細設定
-  const [detailed, setDetailed] = useState<DetailedSettingsState>({
-    waitingApply: false, waitingHours: 0, waitingMinutes: 0,
-    arrivalWaitingApply: false, arrivalWaitingHours: 0, arrivalWaitingMinutes: 0,
-    fuelSurchargeApply: false, fuelSurchargeAmount: 0,
-    transportFeeApply: false, transportFeeAmount: 0,
-    specialVehicleApply: false, specialVehicleType: "", specialVehicleRate: 0,
-    holidayApply: false, holidayRate: 0,
-    lateNightApply: false, lateNightRate: 0,
-    taperingApply: false, taperingRate: 0,
-    longTermContractApply: false, longTermContractRate: 0,
-    roundTripApply: false, roundTripRate: 0,
-  });
-
-  // 仮：距離値
-  const [mapKm, setMapKm] = useState<number | null>(null);
+  const [useHighway, setUseHighway] = useState<boolean>(true);
+  const [rawKm, setRawKm] = useState<number | null>(null);
+  const [roundedKm, setRoundedKm] = useState<number | null>(null);
   const [fare, setFare] = useState<number | null>(null);
+  const [originAddr, setOriginAddr] = useState<string>("");
+  const [destinationAddr, setDestinationAddr] = useState<string>("");
 
-  // 地域切替で地図リセット
+  // メニュー表示用 state
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [clickedLatLng, setClickedLatLng] = useState<google.maps.LatLngLiteral | null>(null);
+
+  const originRef = useRef<google.maps.LatLngLiteral | null>(null);
+  const destinationRef = useRef<google.maps.LatLngLiteral | null>(null);
+  const destinationMarkerRef = useRef<google.maps.Marker | null>(null); // ← 追加
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+  const markersRef = useRef<google.maps.Marker[]>([]);
+
+  // 地図初期化
   useEffect(() => {
-    const map = window.map;
-    if (map) {
-      map.fitBounds(boundsMap[region], { top: 16, right: 16, bottom: 16, left: 16 });
-    }
-  }, [region]);
+    if (!mapRef.current || !window.google || mapInstanceRef.current) return;
 
-  // 地図クリックでメニュー
-  const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
-    if (!e.latLng || !mapContainerRef.current) return;
-    const rect = mapContainerRef.current.getBoundingClientRect();
-    const relX = e.domEvent.clientX - rect.left;
-    const relY = e.domEvent.clientY - rect.top;
-    setClickedLatLng({ lat: e.latLng.lat(), lng: e.latLng.lng() });
-    setMenuPos({ x: relX, y: relY - 40 });
-    setMenuOpen(true);
+    const map = new window.google.maps.Map(mapRef.current, {
+      center: { lat: 37, lng: 138 },
+      zoom: 6,
+      mapTypeId: "roadmap",
+      zoomControl: true,
+      streetViewControl: false,
+      fullscreenControl: false,
+    });
+    mapInstanceRef.current = map;
+
+    const renderer = new window.google.maps.DirectionsRenderer({
+      map,
+      suppressMarkers: true,
+      polylineOptions: { strokeColor: "#0000FF" },
+      preserveViewport: true,
+    });
+    directionsRendererRef.current = renderer;
+
+    // クリックでメニュー表示
+    map.addListener("click", (e: google.maps.MapMouseEvent) => {
+      if (!e.latLng) return;
+      const ev = e.domEvent as MouseEvent;
+      setMenuPos({ x: ev.clientX, y: ev.clientY });
+      setClickedLatLng({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+      setMenuOpen(true);
+    });
   }, []);
 
-  // メニュー選択
-  const handleMenuSelect = (sel: string) => {
-    setMenuOpen(false);
-    if (sel === "origin" && clickedLatLng) {
-      originMarkerRef.current?.setMap(null);
-      originMarkerRef.current = new window.google.maps.Marker({
-        position: clickedLatLng,
-        map: window.map!,
-        icon: {
-          url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png",
-          scaledSize: new window.google.maps.Size(32, 32),
-          anchor: new window.google.maps.Point(16, 32),
-        },
-      });
-    }
-    if (sel === "destination" && clickedLatLng) {
-      destinationMarkerRef.current?.setMap(null);
-      destinationMarkerRef.current = new window.google.maps.Marker({
-        position: clickedLatLng,
-        map: window.map!,
-        icon: {
-          url: "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
-          scaledSize: new window.google.maps.Size(32, 32),
-          anchor: new window.google.maps.Point(16, 32),
-        },
-      });
-    }
+  // 地域変更で Bounds fit
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    const bounds = boundsMap[region];
+    if (!bounds) return;
+    map.fitBounds(bounds, { top: 16, right: 16, bottom: 16, left: 16 });
+  }, [region]);
+
+  // マーカー追加
+  const addMarker = (pos: google.maps.LatLngLiteral, color: "blue" | "red") => {
+    const marker = new window.google.maps.Marker({
+      position: pos,
+      map: directionsRendererRef.current!.getMap()!,
+      icon: {
+        url: `http://maps.google.com/mapfiles/ms/icons/${color}-dot.png`,
+        scaledSize: new window.google.maps.Size(32, 32),
+        anchor: new window.google.maps.Point(16, 32),
+      },
+    });
+    markersRef.current.push(marker);
   };
 
-  // 仮: 距離計算
-  const bothSet = !!originMarkerRef.current && !!destinationMarkerRef.current;
-  const handleCalcMapDistance = async () => {
-    setMapKm(bothSet ? 120 : null);
+  // マーカー消去
+  const clearMarkers = () => {
+    markersRef.current.forEach((m) => m.setMap(null));
+    markersRef.current = [];
+    // destinationMarkerRef は消さない
   };
 
-  // 仮: 運賃計算
-  const handleCalcFare = async () => {
-    let dist = null;
-    if (distanceMode === "map" && mapKm != null) dist = mapKm;
-    if (distanceMode === "manual" && manualConfirmed) dist = Number(manualDistance);
-    // TODO: addressモードは住所→距離APIを使う
-    if (!dist) {
-      alert("距離が未設定です");
+  // 運賃計算＋ルート表示
+  const handleCalcFare = () => {
+    const origin = originRef.current,
+      dest = destinationRef.current;
+    if (!origin || !dest) {
+      alert("出発地と目的地をクリックで指定してください");
       return;
     }
-    const rkm = roundDistance(dist, region);
-    setFare(rkm * 100 + (showDetails ? 3000 : 0));
-  };
 
-  // 経由地追加
-  const handleAddWaypoint = () => {
-    setWaypoints([...waypoints, ""]);
-  };
-  const handleWaypointChange = (idx:number, v:string) => {
-    setWaypoints(waypoints.map((w,i)=>i===idx?v:w));
+    new window.google.maps.DirectionsService().route(
+      {
+        origin,
+        destination: dest,
+        travelMode: window.google.maps.TravelMode.DRIVING,
+        avoidHighways: !useHighway,
+        avoidFerries: true,
+      },
+      async (result, status) => {
+        if (status !== "OK" || !result) {
+          alert("ルート取得エラー：" + status);
+          return;
+        }
+        // フェリー区間を除外
+        const leg = result.routes[0].legs[0];
+        const isStartHokkaido = leg.start_address.includes("北海道");
+        const isEndHokkaido = leg.end_address.includes("北海道");
+        if (isStartHokkaido !== isEndHokkaido) {
+          alert("北海道⇔本州フェリー区間は計算できません");
+          return;
+        }
+        const landOnly = result.routes.find((r) =>
+          !r.legs.some((l) =>
+            l.steps.some((s) => (s.instructions || "").includes("フェリー"))
+          )
+        );
+        if (!landOnly) {
+          alert("「高速道路を利用する」にチェックして再計算してください");
+          return;
+        }
+
+        directionsRendererRef.current!.setDirections({
+          ...result,
+          routes: [landOnly],
+        });
+
+        const km = landOnly.legs[0].distance!.value / 1000;
+        setRawKm(km);
+        setOriginAddr(leg.start_address.replace(/^日本、,?\s*/, ""));
+        setDestinationAddr(leg.end_address.replace(/^日本、,?\s*/, ""));
+        const rkm = roundDistance(km, region);
+        setRoundedKm(rkm);
+
+        const { data, error } = await supabase
+          .from("fare_rates")
+          .select("fare_yen")
+          .eq("region_code", regionMap[region])
+          .eq("vehicle_code", vehicleMap[vehicle])
+          .eq("upto_km", rkm)
+          .maybeSingle();
+        if (error || !data) {
+          alert("運賃計算できません");
+          return;
+        }
+        setFare(data.fare_yen);
+      }
+    );
   };
 
   return (
-    <div style={{ maxWidth: 800, margin: "0 auto", padding: "0 8px" }}>
-      {/* 上部は省略: 車種・地域・高速・割増等ボタン */}
+    <div>
+      {/* 操作パネル */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontWeight: 'bold', marginBottom: 8 }}>車種</div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {(["small", "medium", "large", "trailer"] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setVehicle(v)}
+                style={{
+                  padding: '8px 16px',
+                  border: '2px solid #0066cc',
+                  borderRadius: '4px',
+                  backgroundColor: vehicle === v ? '#0066cc' : 'white',
+                  color: vehicle === v ? 'white' : '#0066cc',
+                  cursor: 'pointer',
+                  fontWeight: vehicle === v ? 'bold' : 'normal',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  if (vehicle !== v) {
+                    e.currentTarget.style.backgroundColor = '#e6f2ff';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (vehicle !== v) {
+                    e.currentTarget.style.backgroundColor = 'white';
+                  }
+                }}
+              >
+                {{
+                  small: "小型車(2t)",
+                  medium: "中型車(4t)",
+                  large: "大型車(10t)",
+                  trailer: "トレーラー(20t)",
+                }[v]}
+              </button>
+            ))}
+          </div>
+        </div>
 
-      {/* --- 距離方式選択 --- */}
-      <div style={{display: "flex", justifyContent: "center", gap: 8, margin: "24px 0 12px"}}>
-        {[
-          {mode: "map", label: "地図から運行距離を計算"},
-          {mode: "address", label: "住所から運行距離を計算"},
-          {mode: "manual", label: "運行距離を把握している"}
-        ].map(opt => (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontWeight: 'bold', marginBottom: 8 }}>届出の利用運輸局</div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {(
+              ["北海道", "東北", "関東", "北陸信越", "中部", "近畿", "中国", "四国", "九州", "沖縄"] as string[]
+            ).map((r) => (
+              <button
+                key={r}
+                onClick={() => setRegion(r)}
+                style={{
+                  padding: '8px 16px',
+                  border: '2px solid #00aa00',
+                  borderRadius: '4px',
+                  backgroundColor: region === r ? '#00aa00' : 'white',
+                  color: region === r ? 'white' : '#00aa00',
+                  cursor: 'pointer',
+                  fontWeight: region === r ? 'bold' : 'normal',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  if (region !== r) {
+                    e.currentTarget.style.backgroundColor = '#e6ffe6';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (region !== r) {
+                    e.currentTarget.style.backgroundColor = 'white';
+                  }
+                }}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
           <button
-            key={opt.mode}
-            onClick={() => setDistanceMode(opt.mode as any)}
+            onClick={() => setUseHighway(!useHighway)}
             style={{
-              minWidth: 180, height: 38,
-              border: "2.5px solid #1a78f7",
-              background: distanceMode === opt.mode ? "#1a78f7" : "#fff",
-              color: distanceMode === opt.mode ? "#fff" : "#1a78f7",
-              fontWeight: "bold", fontSize: 15,
-              borderRadius: 6, margin: "0 6px"
+              padding: '8px 16px',
+              border: '2px solid #aa00aa',
+              borderRadius: '4px',
+              backgroundColor: useHighway ? '#aa00aa' : 'white',
+              color: useHighway ? 'white' : '#aa00aa',
+              cursor: 'pointer',
+              fontWeight: useHighway ? 'bold' : 'normal',
+              transition: 'all 0.2s ease',
             }}
-          >{opt.label}</button>
-        ))}
+            onMouseEnter={(e) => {
+              if (!useHighway) {
+                e.currentTarget.style.backgroundColor = '#ffe6ff';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!useHighway) {
+                e.currentTarget.style.backgroundColor = 'white';
+              }
+            }}
+          >
+            高速道路を利用する
+          </button>
+        </div>
       </div>
 
-      {/* --- 距離方式ごとのフォーム --- */}
-      <div style={{display: "flex", flexDirection: "column", alignItems: "center", margin: "16px 0 0"}}>
-        {/* --- 地図から計算 --- */}
-        {distanceMode === "map" && (
-          <div ref={mapContainerRef} style={{width: "98%", margin:"0 auto"}}>
-            <MapContainer onClick={handleMapClick} />
-            {menuOpen && (
-              <MenuOverlay
-                mode="main"
-                x={menuPos.x}
-                y={menuPos.y}
-                onSelect={handleMenuSelect}
-              />
-            )}
-            <div style={{ marginTop: 8 }}>
-              <span>地図で選択した距離: </span>
-              <b>{mapKm != null ? `${mapKm} km` : "未設定"}</b>
-              <button style={{ marginLeft: 18, padding: "2px 18px" }} onClick={handleCalcMapDistance}>
-                距離を計算する
-              </button>
-            </div>
-          </div>
-        )}
+      {/* 地図 */}
+      <div ref={mapRef} style={{ width: "100%", height: "400px", position: "relative" }} />
 
-        {/* --- 住所で計算 --- */}
-        {distanceMode === "address" && (
-          <div style={{width: 460, border: "1.5px dotted #38f", borderRadius: 10, padding: 24, margin: "0 auto"}}>
-            <div style={{display: "flex", justifyContent: "center", gap: 4, marginBottom: 8}}>
-              <button onClick={()=>setAddressTab("normal")}
-                style={{background: addressTab==="normal"?"#1a78f7":"#fff", color: addressTab==="normal"?"#fff":"#1a78f7", border: "2px solid #1a78f7", fontWeight: "bold", borderRadius: 4, width: 150}}>
-                フェリー区間がない
-              </button>
-              <button onClick={()=>setAddressTab("ferry")}
-                style={{background: addressTab==="ferry"?"#1a78f7":"#fff", color: addressTab==="ferry"?"#fff":"#1a78f7", border: "2px solid #1a78f7", fontWeight: "bold", borderRadius: 4, width: 150}}>
-                フェリー区間がある
-              </button>
-            </div>
-            {/* 通常 or フェリーの入力フォーム */}
-            {addressTab==="normal" ? (
-              <>
-                <div style={{display: "flex", alignItems: "center", marginBottom: 12}}>
-                  <span style={{width: 80, background: "#1a78f7", color: "#fff", borderRadius: 4, textAlign: "center", padding: "6px 0", fontWeight: "bold", fontSize: 16}}>出発地</span>
-                  <input value={origin} onChange={e=>setOrigin(e.target.value)} style={{marginLeft: 12, width: 280, height: 38, fontSize: 17, borderRadius: 4, border: "2px solid #ccc"}} placeholder="住所を入力します" />
-                </div>
-                {waypoints.map((w, idx) => (
-                  <div key={idx} style={{display: "flex", alignItems: "center", marginBottom: 12}}>
-                    <span style={{width: 80, background: "#1a78f7", color: "#fff", borderRadius: 4, textAlign: "center", padding: "6px 0", fontWeight: "bold", fontSize: 16}}>経由地</span>
-                    <input value={w} onChange={e=>handleWaypointChange(idx, e.target.value)} style={{marginLeft: 12, width: 280, height: 38, fontSize: 17, borderRadius: 4, border: "2px solid #ccc"}} placeholder="住所を入力します" />
-                    {idx===waypoints.length-1 && waypoints.length<10 && (
-                      <button onClick={handleAddWaypoint} style={{marginLeft:8, background:"#20b920", color:"#fff", borderRadius: "50%", border: "none", width:32, height:32, fontSize:22, fontWeight:"bold"}}>＋</button>
-                    )}
-                  </div>
-                ))}
-                <div style={{display: "flex", alignItems: "center", marginBottom: 10}}>
-                  <span style={{width: 80, background: "#1a78f7", color: "#fff", borderRadius: 4, textAlign: "center", padding: "6px 0", fontWeight: "bold", fontSize: 16}}>目的地</span>
-                  <input value={destination} onChange={e=>setDestination(e.target.value)} style={{marginLeft: 12, width: 280, height: 38, fontSize: 17, borderRadius: 4, border: "2px solid #ccc"}} placeholder="住所を入力します" />
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={{display: "flex", alignItems: "center", marginBottom: 12}}>
-                  <span style={{width: 80, background: "#1a78f7", color: "#fff", borderRadius: 4, textAlign: "center", padding: "6px 0", fontWeight: "bold", fontSize: 16}}>出発地</span>
-                  <input value={origin} onChange={e=>setOrigin(e.target.value)} style={{marginLeft: 12, width: 280, height: 38, fontSize: 17, borderRadius: 4, border: "2px solid #ccc"}} placeholder="住所、市町村、事業所" />
-                </div>
-                <div style={{display: "flex", alignItems: "center", marginBottom: 12}}>
-                  <span style={{width: 80, background: "#1a78f7", color: "#fff", borderRadius: 4, textAlign: "center", padding: "6px 0", fontWeight: "bold", fontSize: 16}}>乗船する港名</span>
-                  <input value={ferryPorts.from} onChange={e=>setFerryPorts(v=>({...v,from:e.target.value}))} style={{marginLeft: 12, width: 280, height: 38, fontSize: 17, borderRadius: 4, border: "2px solid #ccc"}} placeholder="港名 例:苫小牧港" />
-                </div>
-                <div style={{display: "flex", alignItems: "center", marginBottom: 12}}>
-                  <span style={{width: 80, background: "#1a78f7", color: "#fff", borderRadius: 4, textAlign: "center", padding: "6px 0", fontWeight: "bold", fontSize: 16}}>下船する港名</span>
-                  <input value={ferryPorts.to} onChange={e=>setFerryPorts(v=>({...v,to:e.target.value}))} style={{marginLeft: 12, width: 280, height: 38, fontSize: 17, borderRadius: 4, border: "2px solid #ccc"}} placeholder="港名 例:八戸港" />
-                </div>
-                <div style={{display: "flex", alignItems: "center", marginBottom: 10}}>
-                  <span style={{width: 80, background: "#1a78f7", color: "#fff", borderRadius: 4, textAlign: "center", padding: "6px 0", fontWeight: "bold", fontSize: 16}}>到着地</span>
-                  <input value={destination} onChange={e=>setDestination(e.target.value)} style={{marginLeft: 12, width: 280, height: 38, fontSize: 17, borderRadius: 4, border: "2px solid #ccc"}} placeholder="住所、市町村、事業所" />
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* --- 運行距離を把握 --- */}
-        {distanceMode === "manual" && (
-          <div style={{display: "flex", alignItems: "center", margin: "24px 0", justifyContent: "center"}}>
-            <span style={{
-              width: 90, background: "#1a78f7", color: "#fff", borderRadius: 4,
-              textAlign: "center", fontWeight: "bold", fontSize: 15, height: 38, lineHeight: "38px"
-            }}>運行距離</span>
-            <input
-              type="number"
-              value={manualDistance}
-              onChange={e => { setManualDistance(e.target.value); setManualConfirmed(false); }}
-              placeholder="数字を入力"
-              style={{marginLeft: 10, width: 180, height: 38, fontSize: 17, borderRadius: 4, border: "2px solid #ccc"}}
-            />
-            <span style={{marginLeft: 8, fontWeight: "bold"}}>km</span>
-            <button style={{
-              marginLeft: 10, height: 38, fontWeight: "bold", fontSize: 15,
-              background: "#e7f0f5", border: "2px solid #bbb", borderRadius: 5, color: "#333"
-            }}
-            onClick={() => setManualConfirmed(true)}
-            >距離を確定</button>
-          </div>
-        )}
-      </div>
-
-      {/* --- 詳細条件・割増割引 --- */}
-      <div style={{ marginTop: 24 }}>
-        <button
-          onClick={() => setShowDetails(v=>!v)}
+      {/* 選択メニュー */}
+      {menuOpen && menuPos && clickedLatLng && (
+        <div
           style={{
-            border: "2.5px solid #ff9800", fontWeight: "bold", fontSize: 17, borderRadius: 8,
-            background: showDetails ? orange : "#fff",
-            color: showDetails ? "#fff" : "#ff9800",
-            width: 320, height: 44, marginBottom: 10,
+            position: "absolute",
+            top: menuPos.y,
+            left: menuPos.x,
+            background: "#fff",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+            borderRadius: 4,
+            zIndex: 1000,
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          料金、実費、割増等を適用{showDetails ? "する" : "しない"}
-        </button>
-        {showDetails && (
-          <DetailedSettings value={detailed} onChange={setDetailed} />
-        )}
-      </div>
+          <button
+            style={{ color: "blue" }}
+            onClick={() => {
+              originRef.current = clickedLatLng;
+              clearMarkers();
+              addMarker(clickedLatLng, "blue");
+              setMenuOpen(false);
+            }}
+          >
+            出発地に設定
+          </button>
+          <button
+            style={{ color: "red" }}
+            onClick={() => {
+              if (!originRef.current) {
+                alert("先に出発地を設定してください");
+                return;
+              }
+              // ① 既存の赤マーカーだけ消す
+              if (destinationMarkerRef.current) {
+                destinationMarkerRef.current.setMap(null);
+              }
+              // ② destinationRef を上書き
+              destinationRef.current = clickedLatLng;
+              // ③ 新しい赤マーカーを作って保存
+              const m = new window.google.maps.Marker({
+                position: clickedLatLng,
+                map: directionsRendererRef.current!.getMap()!,
+                icon: {
+                  url: "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
+                  scaledSize: new window.google.maps.Size(32, 32),
+                  anchor: new window.google.maps.Point(16, 32),
+                },
+              });
+              destinationMarkerRef.current = m;
+              setMenuOpen(false);
+            }}
+          >
+            到着地に設定
+          </button>
+        </div>
+      )}
 
-      {/* --- 計算ボタン --- */}
-      <div style={{ textAlign: "center", marginTop: 24 }}>
-        <button
-          onClick={handleCalcFare}
-          disabled={!((distanceMode==="map" && mapKm!=null) || (distanceMode==="manual" && manualConfirmed))}
-          style={{
-            background: ((distanceMode==="map" && mapKm!=null) || (distanceMode==="manual" && manualConfirmed)) ? "#1761d5" : "#fff",
-            color: ((distanceMode==="map" && mapKm!=null) || (distanceMode==="manual" && manualConfirmed)) ? "#fff" : "#1761d5",
-            border: "3.5px solid #1761d5",
-            borderRadius: 10, height: 60, minWidth: 320, fontWeight: "bold", fontSize: 22, marginTop: 6,
-            cursor: "pointer"
+      {/* 計算ボタン */}
+      <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+        <button 
+          onClick={handleCalcFare} 
+          style={{ 
+            padding: "12px 24px",
+            fontSize: "16px",
+            fontWeight: "bold",
+            border: "none",
+            borderRadius: "4px",
+            backgroundColor: originRef.current && destinationRef.current ? "#0066cc" : "#cccccc",
+            color: "white",
+            cursor: originRef.current && destinationRef.current ? "pointer" : "not-allowed",
+            transition: "background-color 0.3s ease",
           }}
-        >標準的運賃（概算）を計算する</button>
+          disabled={!originRef.current || !destinationRef.current}
+        >
+          標準的運賃（概算）を計算する
+        </button>
       </div>
 
-      {/* --- 結果 --- */}
+      {/* 結果表示 */}
       {fare != null && (
-        <div style={{ border: "1px solid #000", borderRadius: 12, padding: 16, marginTop: 24, maxWidth: 600, fontSize: 14 }}>
+        <div
+          style={{
+            border: "1px solid #000",
+            borderRadius: 12,
+            padding: 16,
+            marginTop: 24,
+            maxWidth: 600,
+            fontSize: 14,
+          }}
+        >
           <h2 style={{ margin: 0, fontSize: 24 }}>
             基準運賃額
             <span style={{ marginLeft: "10mm", fontWeight: "bold", fontSize: 28 }}>
@@ -331,14 +413,29 @@ export default function GoogleMap() {
               （高速道路料金及び消費税を含みません）
             </small>
           </h2>
-        </div>
-      )}
-    </div>
-  );
-}
-
-            </small>
-          </h2>
+          <dl style={{ margin: "12px 0", lineHeight: 1.5, overflow: "hidden" }}>
+            <dt style={{ float: "left", clear: "left", width: 120 }}>出発地：住所</dt>
+            <dd style={{ marginLeft: 120 }}>{originAddr}</dd>
+            <dt style={{ float: "left", clear: "left", width: 120 }}>到着地：住所</dt>
+            <dd style={{ marginLeft: 120 }}>{destinationAddr}</dd>
+            <dt style={{ float: "left", clear: "left", width: 120 }}>経路上の距離</dt>
+            <dd style={{ marginLeft: 120 }}>{rawKm!.toFixed(1)}km</dd>
+            <dt style={{ float: "left", clear: "left", width: 120 }}>運賃計算距離</dt>
+            <dd style={{ marginLeft: 120 }}>{roundedKm}km</dd>
+            <dt style={{ float: "left", clear: "left", width: 120 }}>高速道路利用</dt>
+            <dd style={{ marginLeft: 120 }}>{useHighway ? "利用する" : "利用しない"}</dd>
+            <dt style={{ float: "left", clear: "left", width: 120 }}>車種</dt>
+            <dd style={{ marginLeft: 120 }}>
+              {{
+                small: "小型車(2t)",
+                medium: "中型車(4t)",
+                large: "大型車(10t)",
+                trailer: "トレーラー(20t)",
+              }[vehicle]}
+            </dd>
+            <dt style={{ float: "left", clear: "left", width: 120 }}>届出：運輸局</dt>
+            <dd style={{ marginLeft: 120 }}>{region}運輸局</dd>
+          </dl>
         </div>
       )}
 
@@ -353,16 +450,14 @@ export default function GoogleMap() {
           maxWidth: 600,
         }}
       >
-        <p>●標準的運賃は、令和６年国土交通省告示第209号（2024/03/22）を踏まえ算出されます。</p>
-        <p>●青色ピンは出発地、赤色ピンは到着地、黄色ピンは経由地です。</p>
-        <p>●算出される距離と実際の走行距離に誤差が発生する場合があります。</p>
-        <p>●地図データの状況により出発地住所が取得できない場合は、近隣エリアを起点・終点として算出します。</p>
-        <p>●割増、割引、燃料サーチャージ、高速道路利用料金などの詳細計算につきましては、７月頃の公開を予定しています。</p>
-        <p>●フェリー区間が想定される場合、「高速道路を利用する」を選択してください。</p>
-        <p>◆計算システムの提供：公益社団法人全日本トラック協会</p>
-        <p>◆お問合せ先：日本ＰＭＩコンサルティング株式会社　メールアドレス：a@jta-r.jp</p>
-        <p style={{ marginTop: 12 }}>計算システム改訂版公開　2025年5月22日</p>
-      </div>
+        <p>● 標準的運賃は、令和６年国土交通省告示第209号（2024/03/22）を踏まえ算出されます。</p>
+        <p>● 青色ピンは出発地、赤色ピンは到着地です。</p>
+        <p>● 算出される距離と実際の走行距離に誤差が発生する場合があります。</p>
+        <p>● 地図データの状況により出発地住所が取得できない場合は、近隣エリアを起点・終点として算出します。</p>
+        <p>● フェリー区間がある場合、「高速道路を利用する」を選択してください。</p>
+        <p>● </p>
+        <p>◆ 計算システムの提供：公益社団法人全日本トラック協会</p>
+        <p>◆ 利用方法のお問合せ：日本ＰＭＩコンサルティング株式会社　メールアドレス：a@jta-r.jp</p>      </div>
     </div>
   );
 }
