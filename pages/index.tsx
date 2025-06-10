@@ -1,8 +1,7 @@
 // pages/index.tsx
 
 import Head from 'next/head';
-import GoogleMap from "../components/GoogleMap"; // 地図＋計算ロジック一式
-import styles from '../styles/Home.module.css';
+import GoogleMap from "../components/GoogleMap";
 
 export default function Home() {
   return (
@@ -12,16 +11,11 @@ export default function Home() {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
 
-      <main className={styles.container}>
-        {/* 1. タイトル */}
-        <h1 className={styles.title}>
+      <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
+        <h1 style={{ textAlign: 'center', marginBottom: '30px' }}>
           標準的運賃の計算【令和6年告示】
         </h1>
-
-        {/* 2. 操作パネル＋計算ボタンも GoogleMap 内に含める */}
-        <section className={styles.mapWrapper}>
-          <GoogleMap />
-        </section>
+        <GoogleMap />
       </main>
     </>
   );
