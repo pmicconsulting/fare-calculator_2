@@ -4,6 +4,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let supabase: SupabaseClient<any, 'public', any>;
 
 if (!supabaseUrl || !supabaseAnonKey) {
@@ -22,6 +23,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
       signOut: () => Promise.resolve({ error: null }),
       getSession: () => Promise.resolve({ data: null, error: null }),
     },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as SupabaseClient<any, 'public', any>;
 } else {
   supabase = createClient(supabaseUrl, supabaseAnonKey);
