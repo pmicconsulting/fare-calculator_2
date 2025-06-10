@@ -1,8 +1,8 @@
 // pages/index.tsx
 
-import Head from "next/head";
+import Head from 'next/head';
 import GoogleMap from "../components/GoogleMap"; // 地図＋計算ロジック一式
-import styles from "../styles/Home.module.css";
+import styles from '../styles/Home.module.css';
 
 export default function Home() {
   return (
@@ -19,7 +19,6 @@ export default function Home() {
         </h1>
 
         {/* 2. 操作パネル＋計算ボタンも GoogleMap 内に含める */}
-        {/* GoogleMap コンポーネントがフォームとボタン、結果、注意書きをレンダリングします */}
         <section className={styles.mapWrapper}>
           <GoogleMap />
         </section>
