@@ -3,6 +3,7 @@
 import Head from "next/head";
 import GoogleMap from "../components/GoogleMap"; // 地図＋計算ロジック一式
 import styles from "../styles/Home.module.css";
+import React from 'react';
 
 export default function Home() {
   return (
