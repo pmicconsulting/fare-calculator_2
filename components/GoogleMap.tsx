@@ -75,6 +75,14 @@ export default function GoogleMap() {
 
   // 地図初期化
   useEffect(() => {
+    // ピンチズームを防ぐイベントリスナー追加
+    const preventPinchZoom = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('touchmove', preventPinchZoom, { passive: false });
+
     if (!mapRef.current || !window.google || mapInstanceRef.current) return;
 
     const map = new window.google.maps.Map(mapRef.current, {
@@ -84,6 +92,7 @@ export default function GoogleMap() {
       zoomControl: true,
       streetViewControl: false,
       fullscreenControl: false,
+      gestureHandling: "greedy", // 地図のみジェスチャーを受け付ける
     });
     mapInstanceRef.current = map;
 
@@ -103,6 +112,11 @@ export default function GoogleMap() {
       setClickedLatLng({ lat: e.latLng.lat(), lng: e.latLng.lng() });
       setMenuOpen(true);
     });
+
+    // クリーンアップ関数でイベントリスナーを削除
+    return () => {
+      document.removeEventListener('touchmove', preventPinchZoom);
+    };
   }, []);
 
   // 地域変更で Bounds fit

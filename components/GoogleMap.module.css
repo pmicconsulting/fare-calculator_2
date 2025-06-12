@@ -1,4 +1,8 @@
 .container {
+  width: 100%;
+  touch-action: pan-x pan-y; /* ピンチズームを無効化 */
+  -webkit-user-select: none; /* iOS Safari対応 */
+  user-select: none;
   padding: 20px;
   max-width: 100%;
 }

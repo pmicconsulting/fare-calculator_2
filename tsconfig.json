@@ -21,12 +21,18 @@
     "types": [
       "google.maps"
     ],
-    "incremental": true
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
   },
   "include": [
     "next-env.d.ts",
     "src/**/*",
-    "src/types/**/*"
+    "src/types/**/*",
+    ".next/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"
