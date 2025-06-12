@@ -194,6 +194,10 @@ export default function GoogleMap() {
           routes: [landOnly],
         });
 
+        // 追加: 経路全体が見えるように地図を自動調整
+        const bounds = landOnly.bounds;
+        mapInstanceRef.current!.fitBounds(bounds);
+
         const km = landOnly.legs[0].distance!.value / 1000;
         setRawKm(km);
         setOriginAddr(leg.start_address.replace(/^日本、,?\s*/, ""));
