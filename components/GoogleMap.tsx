@@ -2,9 +2,10 @@
 
 "use client";
 
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { roundDistance } from "../lib/fareUtils";
+import styles from './GoogleMap.module.css';
 
 declare global {
   interface Window {
@@ -48,6 +49,17 @@ const boundsMap: Record<string, google.maps.LatLngBoundsLiteral> = {
   九州: { north: 33.0, south: 30.5, west: 129.5, east: 131.5 },
   沖縄: { north: 26.8, south: 24.0, west: 122.9, east: 131.3 },
 };
+
+interface RouteInfo {
+  duration: string;
+  distance: string;
+  fare: number;
+  breakdown: {
+    baseFare: number;
+    distanceFare: number;
+    timeFare: number;
+  };
+}
 
 export default function GoogleMap() {
   const [vehicle, setVehicle] = useState<"small" | "medium" | "large" | "trailer">("large");
@@ -135,7 +147,7 @@ export default function GoogleMap() {
   };
 
   // 運賃計算＋ルート表示
-  const handleCalcFare = () => {
+  const handleCalcFare = useCallback(async () => {
     const origin = originRef.current,
       dest = destinationRef.current;
     if (!origin || !dest) {
@@ -200,10 +212,10 @@ export default function GoogleMap() {
         setFare(data.fare_yen);
       }
     );
-  };
+  }, [useHighway, vehicle, region]);
 
   return (
-    <div>
+    <div className={styles.container}>
       {/* 操作パネル */}
       <div style={{ marginBottom: 12 }}>
         <div style={{ marginBottom: 12 }}>

@@ -12,6 +12,48 @@
 
 html,
 body {
+  padding: 0;
+  margin: 0;
+  font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif;
+  background-color: #f5f7fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* スマホでのタップハイライト無効化 */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* スマホでのズーム無効化（必要に応じて） */
+input[type="text"],
+input[type="number"],
+textarea {
+  font-size: 16px; /* iOS Safariでのズーム防止 */
+}
+
+/* スクロールバーのスタイリング */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+html,
+body {
   max-width: 100vw;
   overflow-x: hidden;
 }
