@@ -208,7 +208,7 @@ export default function GoogleMap() {
       {/* 操作パネル */}
       <div style={{ marginBottom: 12 }}>
         <div style={{ marginBottom: 12 }}>
-          <div style={{ fontWeight: 'bold', marginBottom: 8 }}>車種</div>
+          <div style={{ fontWeight: 'bold', marginBottom: 8, color: '#000' }}>車種</div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {(["small", "medium", "large", "trailer"] as const).map((v) => (
               <button
@@ -247,7 +247,7 @@ export default function GoogleMap() {
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <div style={{ fontWeight: 'bold', marginBottom: 8 }}>届出の利用運輸局</div>
+          <div style={{ fontWeight: 'bold', marginBottom: 8, color: '#000' }}>届出の利用運輸局</div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {(
               ["北海道", "東北", "関東", "北陸信越", "中部", "近畿", "中国", "四国", "九州", "沖縄"] as string[]
@@ -327,10 +327,28 @@ export default function GoogleMap() {
             zIndex: 1000,
             display: "flex",
             flexDirection: "column",
+            padding: "4px",
           }}
         >
           <button
-            style={{ color: "blue" }}
+            style={{ 
+              color: "#0066cc",
+              backgroundColor: "white",
+              border: "none",
+              padding: "8px 16px",
+              textAlign: "left",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: "bold",
+              borderRadius: "4px",
+              transition: "background-color 0.2s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "#e6f2ff";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "white";
+            }}
             onClick={() => {
               originRef.current = clickedLatLng;
               clearMarkers();
@@ -341,7 +359,25 @@ export default function GoogleMap() {
             出発地に設定
           </button>
           <button
-            style={{ color: "red" }}
+            style={{ 
+              color: "#cc0000",
+              backgroundColor: "white",
+              border: "none",
+              padding: "8px 16px",
+              textAlign: "left",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: "bold",
+              borderRadius: "4px",
+              marginTop: "4px",
+              transition: "background-color 0.2s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "#ffe6e6";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "white";
+            }}
             onClick={() => {
               if (!originRef.current) {
                 alert("先に出発地を設定してください");
@@ -403,30 +439,31 @@ export default function GoogleMap() {
             marginTop: 24,
             maxWidth: 600,
             fontSize: 14,
+            color: '#000',
           }}
         >
-          <h2 style={{ margin: 0, fontSize: 24 }}>
+          <h2 style={{ margin: 0, fontSize: 24, color: '#000' }}>
             基準運賃額
-            <span style={{ marginLeft: "10mm", fontWeight: "bold", fontSize: 28 }}>
+            <span style={{ marginLeft: "10mm", fontWeight: "bold", fontSize: 28, color: '#000' }}>
               ¥{fare.toLocaleString()}
             </span>
-            <small style={{ marginLeft: 8, fontSize: 12, color: "#555" }}>
+            <small style={{ marginLeft: 8, fontSize: 12, color: '#555' }}>
               （高速道路料金及び消費税を含みません）
             </small>
           </h2>
-          <dl style={{ margin: "12px 0", lineHeight: 1.5, overflow: "hidden" }}>
-            <dt style={{ float: "left", clear: "left", width: 120 }}>出発地：住所</dt>
-            <dd style={{ marginLeft: 120 }}>{originAddr}</dd>
-            <dt style={{ float: "left", clear: "left", width: 120 }}>到着地：住所</dt>
-            <dd style={{ marginLeft: 120 }}>{destinationAddr}</dd>
-            <dt style={{ float: "left", clear: "left", width: 120 }}>経路上の距離</dt>
-            <dd style={{ marginLeft: 120 }}>{rawKm!.toFixed(1)}km</dd>
-            <dt style={{ float: "left", clear: "left", width: 120 }}>運賃計算距離</dt>
-            <dd style={{ marginLeft: 120 }}>{roundedKm}km</dd>
-            <dt style={{ float: "left", clear: "left", width: 120 }}>高速道路利用</dt>
-            <dd style={{ marginLeft: 120 }}>{useHighway ? "利用する" : "利用しない"}</dd>
-            <dt style={{ float: "left", clear: "left", width: 120 }}>車種</dt>
-            <dd style={{ marginLeft: 120 }}>
+          <dl style={{ margin: "12px 0", lineHeight: 1.5, overflow: "hidden", color: '#000' }}>
+            <dt style={{ float: "left", clear: "left", width: 120, color: '#000' }}>出発地：住所</dt>
+            <dd style={{ marginLeft: 120, color: '#000' }}>{originAddr}</dd>
+            <dt style={{ float: "left", clear: "left", width: 120, color: '#000' }}>到着地：住所</dt>
+            <dd style={{ marginLeft: 120, color: '#000' }}>{destinationAddr}</dd>
+            <dt style={{ float: "left", clear: "left", width: 120, color: '#000' }}>経路上の距離</dt>
+            <dd style={{ marginLeft: 120, color: '#000' }}>{rawKm!.toFixed(1)}km</dd>
+            <dt style={{ float: "left", clear: "left", width: 120, color: '#000' }}>運賃計算距離</dt>
+            <dd style={{ marginLeft: 120, color: '#000' }}>{roundedKm}km</dd>
+            <dt style={{ float: "left", clear: "left", width: 120, color: '#000' }}>高速道路利用</dt>
+            <dd style={{ marginLeft: 120, color: '#000' }}>{useHighway ? "利用する" : "利用しない"}</dd>
+            <dt style={{ float: "left", clear: "left", width: 120, color: '#000' }}>車種</dt>
+            <dd style={{ marginLeft: 120, color: '#000' }}>
               {{
                 small: "小型車(2t)",
                 medium: "中型車(4t)",
@@ -434,8 +471,8 @@ export default function GoogleMap() {
                 trailer: "トレーラー(20t)",
               }[vehicle]}
             </dd>
-            <dt style={{ float: "left", clear: "left", width: 120 }}>届出：運輸局</dt>
-            <dd style={{ marginLeft: 120 }}>{region}運輸局</dd>
+            <dt style={{ float: "left", clear: "left", width: 120, color: '#000' }}>届出：運輸局</dt>
+            <dd style={{ marginLeft: 120, color: '#000' }}>{region}運輸局</dd>
           </dl>
         </div>
       )}
