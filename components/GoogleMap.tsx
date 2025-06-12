@@ -50,17 +50,6 @@ const boundsMap: Record<string, google.maps.LatLngBoundsLiteral> = {
   沖縄: { north: 26.8, south: 24.0, west: 122.9, east: 131.3 },
 };
 
-interface RouteInfo {
-  duration: string;
-  distance: string;
-  fare: number;
-  breakdown: {
-    baseFare: number;
-    distanceFare: number;
-    timeFare: number;
-  };
-}
-
 export default function GoogleMap() {
   const [vehicle, setVehicle] = useState<"small" | "medium" | "large" | "trailer">("large");
   const [region, setRegion] = useState<string>("関東");
